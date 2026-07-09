@@ -83,8 +83,37 @@ validate_build_number() {
   [[ "${build_number}" =~ ^[0-9]+$ ]]
 }
 
+bump_version() {
+  local version="$1"
+  local bump_type="$2"
+  local major minor patch
+
+  IFS='.' read -r major minor patch <<< "${version}"
+  patch="${patch:-0}"
+
+  case "${bump_type}" in
+    patch)
+      patch="$((patch + 1))"
+      ;;
+    minor)
+      minor="$((minor + 1))"
+      patch="0"
+      ;;
+    major)
+      major="$((major + 1))"
+      minor="0"
+      patch="0"
+      ;;
+    *)
+      fail "未知版本更新类型：${bump_type}"
+      ;;
+  esac
+
+  printf "%s.%s.%s" "${major}" "${minor}" "${patch}"
+}
+
 read_release_inputs() {
-  local current_version current_build default_build
+  local current_version current_build default_build version_choice
   current_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${PLIST_PATH}")"
   current_build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "${PLIST_PATH}")"
 
@@ -95,13 +124,38 @@ read_release_inputs() {
   fi
 
   printf "\n当前版本：%s (%s)\n" "${current_version}" "${current_build}"
+  printf "请选择版本更新方式：\n"
+  printf "  1) 修复更新：%s -> %s\n" "${current_version}" "$(bump_version "${current_version}" patch)"
+  printf "  2) 小版本更新：%s -> %s\n" "${current_version}" "$(bump_version "${current_version}" minor)"
+  printf "  3) 大版本更新：%s -> %s\n" "${current_version}" "$(bump_version "${current_version}" major)"
+  printf "  4) 手动输入版本号\n"
 
-  read -r -p "请输入本次发布版本号，例如 0.1.1（留空使用 ${current_version}）： " RELEASE_VERSION
-  RELEASE_VERSION="${RELEASE_VERSION:-${current_version}}"
+  read -r -p "请输入选项 [1-4]（默认 1）： " version_choice
+  version_choice="${version_choice:-1}"
+
+  case "${version_choice}" in
+    1)
+      RELEASE_VERSION="$(bump_version "${current_version}" patch)"
+      ;;
+    2)
+      RELEASE_VERSION="$(bump_version "${current_version}" minor)"
+      ;;
+    3)
+      RELEASE_VERSION="$(bump_version "${current_version}" major)"
+      ;;
+    4)
+      read -r -p "请输入本次发布版本号，例如 0.1.1： " RELEASE_VERSION
+      ;;
+    *)
+      fail "无效选项：${version_choice}"
+      ;;
+  esac
 
   if ! validate_version "${RELEASE_VERSION}"; then
     fail "版本号格式不正确：${RELEASE_VERSION}。请使用类似 0.1.1 或 1.0.0 的格式。"
   fi
+
+  info "本次发布版本：${RELEASE_VERSION}"
 
   read -r -p "请输入 build number（留空使用 ${default_build}）： " RELEASE_BUILD
   RELEASE_BUILD="${RELEASE_BUILD:-${default_build}}"
