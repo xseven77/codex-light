@@ -1,0 +1,16 @@
+.git
+.github
+**/.DS_Store
+**/*.log
+**/.env
+**/.env.*
+
+app/landing/node_modules
+app/landing/.next
+app/CodexLight/.build
+app/CodexLight/.swiftpm
+app/CodexLight/dist
+dist
+*.app
+*.zip
+*.dmg
