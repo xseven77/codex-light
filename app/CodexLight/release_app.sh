@@ -255,12 +255,6 @@ release_notes_file() {
 - \`${APP_NAME}-${RELEASE_VERSION}.dmg\`：推荐安装包
 - \`${APP_NAME}-${RELEASE_VERSION}.zip\`：备用压缩包
 
-### 校验
-
-\`\`\`
-$(shasum -a 256 "${DMG_PATH}" "${ZIP_PATH}")
-\`\`\`
-
 > 当前构建使用 ad-hoc 签名，未做 Apple notarization。
 EOF
 
