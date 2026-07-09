@@ -41,7 +41,8 @@ cd app/CodexLight
 或者从任意目录运行：
 
 ```bash
-/Users/qiizo/code/Personal/codex-light/app/CodexLight/release_app.sh
+cd app/CodexLight
+./release_app.sh
 ```
 
 ## 前置依赖

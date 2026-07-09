@@ -108,14 +108,14 @@ export function MenuBarPreview() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
                   <span className="truncate text-[15px] font-semibold text-[#242933]">
-                    seven x
+                    Demo User
                   </span>
                   <span className="rounded-[5px] bg-[#28c04e]/10 px-1.5 py-0.5 text-[9px] font-bold text-[#28c04e]">
                     API
                   </span>
                 </div>
                 <p className="mt-0.5 truncate text-xs text-[#5b6572]">
-                  xujinqi7@gmail.com · ChatGPT · plus
+                  name@example.com · Personal · Plus
                 </p>
               </div>
               <div className="flex shrink-0 gap-1.5">
