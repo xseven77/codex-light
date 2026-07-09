@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windowController: DetachedWindowController?
     private let snapshotStore = UsageSnapshotStore()
     private let settingsStore = AppSettingsStore()
+    private let updateController = AppUpdateController()
     private let usageService = CodexUsageService()
     private var actions: UsageActions?
     private var autoRefreshTimer: Timer?
@@ -45,6 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusController = StatusBarController(
             store: snapshotStore,
             settings: settingsStore,
+            updater: updateController,
             actions: actions
         )
         startAutoRefreshTimer()
@@ -126,6 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             windowController = DetachedWindowController(
                 store: snapshotStore,
                 settings: settingsStore,
+                updater: updateController,
                 actions: actions,
                 onClose: { [weak self] in
                     self?.handleDetachedWindowClosed()

@@ -3,13 +3,14 @@ import SwiftUI
 struct UsagePopoverView: View {
     @Bindable var store: UsageSnapshotStore
     @Bindable var settings: AppSettingsStore
+    @Bindable var updater: AppUpdateController
     let actions: UsageActions
     @State private var showsSettings = false
 
     var body: some View {
         Group {
             if showsSettings {
-                SettingsView(settings: settings, layout: .compact) {
+                SettingsView(settings: settings, updater: updater, layout: .compact) {
                     showsSettings = false
                 }
             } else {
@@ -37,13 +38,14 @@ struct UsagePopoverView: View {
 struct DetachedUsageWindowView: View {
     @Bindable var store: UsageSnapshotStore
     @Bindable var settings: AppSettingsStore
+    @Bindable var updater: AppUpdateController
     let actions: UsageActions
     @State private var showsSettings = false
 
     var body: some View {
         Group {
             if showsSettings {
-                SettingsView(settings: settings, layout: .window) {
+                SettingsView(settings: settings, updater: updater, layout: .window) {
                     showsSettings = false
                 }
             } else {

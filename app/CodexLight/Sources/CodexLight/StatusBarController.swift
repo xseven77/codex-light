@@ -11,12 +11,12 @@ final class StatusBarController: NSObject {
     private let hostingController: NSHostingController<UsagePopoverView>
     private let store: UsageSnapshotStore
 
-    init(store: UsageSnapshotStore, settings: AppSettingsStore, actions: UsageActions) {
+    init(store: UsageSnapshotStore, settings: AppSettingsStore, updater: AppUpdateController, actions: UsageActions) {
         self.store = store
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         popover = NSPopover()
         hostingController = NSHostingController(
-            rootView: UsagePopoverView(store: store, settings: settings, actions: actions)
+            rootView: UsagePopoverView(store: store, settings: settings, updater: updater, actions: actions)
         )
         super.init()
 

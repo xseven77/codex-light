@@ -26,6 +26,7 @@ final class DetachedWindowController: NSObject, NSWindowDelegate {
     init(
         store: UsageSnapshotStore,
         settings: AppSettingsStore,
+        updater: AppUpdateController,
         actions: UsageActions,
         onClose: (() -> Void)? = nil
     ) {
@@ -42,7 +43,12 @@ final class DetachedWindowController: NSObject, NSWindowDelegate {
             defer: false
         )
         hostingController = NSHostingController(
-            rootView: DetachedUsageWindowView(store: store, settings: settings, actions: actions)
+            rootView: DetachedUsageWindowView(
+                store: store,
+                settings: settings,
+                updater: updater,
+                actions: actions
+            )
         )
 
         super.init()

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @Bindable var settings: AppSettingsStore
+    @Bindable var updater: AppUpdateController
     let layout: UsagePanelLayout
     let onClose: () -> Void
 
@@ -18,6 +19,7 @@ struct SettingsView: View {
             header
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
+                    updateSection
                     themeSection
                     refreshSection
                 }
@@ -37,7 +39,7 @@ struct SettingsView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .padding(.leading, titleLeadingPadding)
                     .offset(y: titleVerticalOffset)
-                Text("主题与自动刷新")
+                Text("更新、主题与自动刷新")
                     .font(.system(size: 12))
                     .foregroundStyle(Color.codexMuted)
             }
@@ -55,6 +57,99 @@ struct SettingsView: View {
                 .frame(height: 1)
         }
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var updateSection: some View {
+        SettingsSection(title: "软件更新", subtitle: "从 GitHub Releases 检查并安装最新版本") {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("当前版本 \(updater.currentVersion)（\(updater.currentBuild)）")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text(updater.statusText)
+                        .font(.system(size: 12))
+                        .foregroundStyle(statusColor)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if case .downloading = updater.phase {
+                    ProgressView(value: updater.downloadProgress)
+                        .progressViewStyle(.linear)
+                        .tint(Color.codexPrimary)
+                }
+
+                if case .available = updater.phase, let release = updater.latestRelease {
+                    Text(release.name)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.codexMuted)
+                    if !release.releaseNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text(release.releaseNotes)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.codexMuted)
+                            .lineLimit(4)
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    Button(action: primaryUpdateAction) {
+                        Text(primaryUpdateTitle)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .disabled(updater.phase.isBusy)
+
+                    Button(action: updater.openReleasesPage) {
+                        Image(systemName: "safari")
+                            .font(.system(size: 14, weight: .medium))
+                            .frame(width: 36, height: 36)
+                    }
+                    .buttonStyle(IconButtonStyle())
+                    .help("打开 Releases 页面")
+                    .accessibilityLabel("打开 Releases 页面")
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .liquidGlassSurface(cornerRadius: 12, tint: Color.codexGlassTint, shadowOpacity: 0.04)
+        }
+    }
+
+    private var statusColor: Color {
+        switch updater.phase {
+        case .failed:
+            .codexRed
+        case .available:
+            .codexAmber
+        case .upToDate:
+            .codexGreen
+        default:
+            .codexMuted
+        }
+    }
+
+    private var primaryUpdateTitle: String {
+        switch updater.phase {
+        case .checking:
+            "检查中…"
+        case .available:
+            "下载并安装"
+        case .downloading:
+            "下载中…"
+        case .installing:
+            "安装中…"
+        case .failed:
+            "重新检查"
+        default:
+            "检查更新"
+        }
+    }
+
+    private func primaryUpdateAction() {
+        switch updater.phase {
+        case .available:
+            updater.downloadAndInstall()
+        default:
+            updater.checkForUpdates()
+        }
     }
 
     private var themeSection: some View {
