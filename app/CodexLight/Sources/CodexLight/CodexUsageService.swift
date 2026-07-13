@@ -206,7 +206,7 @@ actor CodexUsageService {
             accountName: token.displayName
         )
 
-        guard quota.shortWindow.total > 0 || quota.weekly.total > 0 else {
+        guard (quota.shortWindow?.total ?? 0) > 0 || quota.weekly.total > 0 else {
             throw CodexUsageError.quotaUnavailable
         }
 
@@ -251,7 +251,7 @@ struct CodexLightParser {
             accountEmail: email ?? "OpenAI 账号",
             workspaceName: readWorkspaceName(root) ?? "ChatGPT",
             planName: planName,
-            shortWindow: toUsageWindow(short, label: "5 小时"),
+            shortWindow: short.map { toUsageWindow($0, label: "5 小时") },
             weekly: toUsageWindow(weekly, label: "周额度"),
             credits: CreditBalance(balance: resetCards.count, expiresAt: formatReset(resetCards.first?.expiresAt)),
             resetCoupons: resetCards.enumerated().map { index, card in

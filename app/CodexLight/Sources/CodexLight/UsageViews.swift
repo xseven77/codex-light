@@ -29,7 +29,7 @@ struct UsagePopoverView: View {
         .preferredColorScheme(settings.theme.preferredColorScheme)
         .background(
             LiquidGlassBackdrop(
-                health: QuotaHealthLevel.from(shortWindow: store.snapshot.shortWindow, isLoggedIn: store.isLoggedIn),
+                health: QuotaHealthLevel.from(window: store.snapshot.primaryWindow, isLoggedIn: store.isLoggedIn),
                 topChromeHeight: 96
             )
         )
@@ -70,7 +70,7 @@ struct DetachedUsageWindowView: View {
         .preferredColorScheme(settings.theme.preferredColorScheme)
         .background(
             LiquidGlassBackdrop(
-                health: QuotaHealthLevel.from(shortWindow: store.snapshot.shortWindow, isLoggedIn: store.isLoggedIn),
+                health: QuotaHealthLevel.from(window: store.snapshot.primaryWindow, isLoggedIn: store.isLoggedIn),
                 topChromeHeight: 0
             )
         )
@@ -101,8 +101,8 @@ struct UsagePanel: View {
         snapshot.refreshState == "授权中"
     }
 
-    private var shortHealth: QuotaHealthLevel {
-        QuotaHealthLevel.from(shortWindow: snapshot.shortWindow, isLoggedIn: isLoggedIn)
+    private var primaryHealth: QuotaHealthLevel {
+        QuotaHealthLevel.from(window: snapshot.primaryWindow, isLoggedIn: isLoggedIn)
     }
 
     private var headerInsets: EdgeInsets {
@@ -225,10 +225,10 @@ struct UsagePanel: View {
                         .truncationMode(.middle)
                     Text(snapshot.sourceURL == "preview" ? "PREVIEW" : "API")
                         .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(shortHealth.color)
+                        .foregroundStyle(primaryHealth.color)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
-                        .background(shortHealth.color.opacity(0.10))
+                        .background(primaryHealth.color.opacity(0.10))
                         .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                 }
                 .padding(.leading, accountTitleLeadingPadding)
@@ -373,11 +373,11 @@ struct UsagePanel: View {
     private var summary: some View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(snapshot.shortWindow.percentText)
+                Text(snapshot.primaryWindow.percentText)
                     .font(.system(size: 40, weight: .bold, design: .default))
                     .monospacedDigit()
-                    .foregroundStyle(shortHealth.color)
-                Text("5 小时额度\n\(UsageDateFormat.timeOnly(snapshot.shortWindow.resetsAt)) 重置")
+                    .foregroundStyle(primaryHealth.color)
+                Text("\(snapshot.primaryWindow.label)\n\(UsageDateFormat.timeOnly(snapshot.primaryWindow.resetsAt)) 重置")
                     .font(.system(size: 12))
                     .foregroundStyle(Color.codexMuted)
                     .lineSpacing(2)
@@ -385,7 +385,9 @@ struct UsagePanel: View {
             .frame(width: 118, alignment: .leading)
 
             VStack(spacing: 8) {
-                QuotaRow(window: snapshot.shortWindow, tint: shortHealth.color)
+                if snapshot.hasShortWindow, let shortWindow = snapshot.shortWindow {
+                    QuotaRow(window: shortWindow, tint: primaryHealth.color)
+                }
                 QuotaRow(window: snapshot.weekly, tint: .codexBlue)
             }
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
@@ -539,11 +541,14 @@ struct QuotaRow: View {
 
             LiquidQuotaBar(value: window.percent, tint: tint)
                 .frame(height: 6)
+                .layoutPriority(0)
 
             Text(window.amountText)
                 .font(.system(size: 12, weight: .semibold))
                 .monospacedDigit()
-                .frame(width: 48, alignment: .trailing)
+                // Keep both quota bars aligned while fitting values such as 100/100.
+                .frame(width: 52, alignment: .trailing)
+                .layoutPriority(1)
         }
         .frame(height: 24)
     }

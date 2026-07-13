@@ -38,6 +38,7 @@ final class StatusBarController: NSObject {
 
     func refreshThemeAppearance() {
         applyPopoverWindowAppearance()
+        refreshStatusTitle()
     }
 
     private func configureStatusButton() {
@@ -63,10 +64,15 @@ final class StatusBarController: NSObject {
         }
 
         let snapshot = store.snapshot
-        let text = store.isLoggedIn
-            ? "  Codex 5h \(snapshot.shortWindow.percentText) · 周 \(snapshot.weekly.percentText)  "
-            : "  Codex 未登录  "
-        let health = QuotaHealthLevel.from(shortWindow: snapshot.shortWindow, isLoggedIn: store.isLoggedIn)
+        let text: String
+        if store.isLoggedIn {
+            text = snapshot.hasShortWindow
+                ? "  Codex 5h \(snapshot.primaryWindow.percentText) · 周 \(snapshot.weekly.percentText)  "
+                : "  Codex 周 \(snapshot.weekly.percentText)  "
+        } else {
+            text = "  Codex 未登录  "
+        }
+        let health = QuotaHealthLevel.from(window: snapshot.primaryWindow, isLoggedIn: store.isLoggedIn)
         let statusColor = health.nsColor
         let attributedTitle = NSMutableAttributedString(
             string: "●",
@@ -79,6 +85,7 @@ final class StatusBarController: NSObject {
         attributedTitle.append(NSAttributedString(
             string: text,
             attributes: [
+                // The menu bar follows macOS, not the app's selected content theme.
                 .foregroundColor: NSColor.labelColor,
                 .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)
             ]

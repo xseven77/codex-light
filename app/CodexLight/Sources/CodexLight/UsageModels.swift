@@ -40,13 +40,29 @@ struct CodexUsageSnapshot: Codable, Equatable, Sendable {
     var accountEmail: String
     var workspaceName: String
     var planName: String
-    var shortWindow: UsageWindow
+    /// `nil` when Codex temporarily does not expose the five-hour limit.
+    var shortWindow: UsageWindow?
     var weekly: UsageWindow
     var credits: CreditBalance
     var resetCoupons: [ResetCoupon]
     var fetchedAt: Date
     var refreshState: String
     var sourceURL: String
+}
+
+extension CodexUsageSnapshot {
+    /// The five-hour limit is normally the primary signal. When it is unavailable,
+    /// all quota presentation and health indicators fall back to the weekly limit.
+    var primaryWindow: UsageWindow {
+        guard let shortWindow, shortWindow.total > 0 else { return weekly }
+        return shortWindow
+    }
+
+    var hasShortWindow: Bool {
+        // Older cached snapshots and a temporarily disabled API window can both
+        // contain a 0/0 five-hour quota. Treat either as unavailable.
+        (shortWindow?.total ?? 0) > 0
+    }
 }
 
 @Observable
@@ -154,10 +170,10 @@ enum QuotaHealthLevel: Equatable {
     case yellow
     case red
 
-    static func from(shortWindow: UsageWindow, isLoggedIn: Bool) -> QuotaHealthLevel {
-        guard isLoggedIn, shortWindow.total > 0 else { return .gray }
+    static func from(window: UsageWindow, isLoggedIn: Bool) -> QuotaHealthLevel {
+        guard isLoggedIn, window.total > 0 else { return .gray }
 
-        switch shortWindow.percent {
+        switch window.percent {
         case 0.5...:
             return .green
         case 0.2..<0.5:

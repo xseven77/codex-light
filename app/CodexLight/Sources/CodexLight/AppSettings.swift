@@ -126,8 +126,8 @@ final class AppSettingsStore {
 
     func applyAppearance() {
         let appearance = theme.nsAppearance
-        NSApplication.shared.appearance = appearance
-
+        // Do not override NSApplication.appearance: a status item lives in the
+        // system menu bar, whose text contrast must continue to follow macOS.
         for window in NSApplication.shared.windows {
             window.appearance = appearance
         }
