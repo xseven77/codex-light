@@ -10,8 +10,10 @@ struct SettingsView: View {
     let onClose: () -> Void
     var onMeasuredContentHeightChange: (CGFloat) -> Void = { _ in }
     @State private var showsLogoutConfirmation = false
+    @State private var showsPetPicker = false
     @State private var toast: SettingsToast?
     @State private var toastDismissGeneration = 0
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         VStack(spacing: 0) {
@@ -150,9 +152,25 @@ struct SettingsView: View {
     }
 
     private var accountCard: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 5) {
+        VStack(alignment: .leading, spacing: 0) {
+            accountCardIdentityRow
+                .padding(.horizontal, 16)
+                .frame(minHeight: 60)
+
+            if store.isLoggedIn {
+                SettingsRowDivider()
+                accountCardSubscriptionRow
+                    .padding(.horizontal, 16)
+                    .frame(minHeight: 64)
+            }
+        }
+        .settingsGroupSurface()
+    }
+
+    private var accountCardIdentityRow: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
                     Text(store.isLoggedIn && store.snapshot.accountName?.isEmpty == false
                          ? store.snapshot.accountName!
                          : "OpenAI 账号")
@@ -162,7 +180,7 @@ struct SettingsView: View {
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(Color.codexGreen)
                             .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
+                            .padding(.vertical, 3)
                             .background(Color.codexGreen.opacity(0.10), in: Capsule())
                     }
                 }
@@ -172,8 +190,10 @@ struct SettingsView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(Color.codexMuted)
                     .lineLimit(1)
+                    .truncationMode(.middle)
             }
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
+
             if store.isLoggedIn {
                 Button {
                     showsLogoutConfirmation = true
@@ -196,9 +216,40 @@ struct SettingsView: View {
                     .background(Color.codexMuted.opacity(0.10), in: Capsule())
             }
         }
-        .padding(.horizontal, 13)
-        .frame(minHeight: 50)
-        .settingsGroupSurface()
+    }
+
+    private var accountCardSubscriptionRow: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                if let expiryLine = store.snapshot.subscriptionSettingsExpiryLine {
+                    Text(expiryLine)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(store.snapshot.showsSubscriptionExpiryReminder
+                            ? Color.codexAmber
+                            : Color.codexInk.opacity(0.72))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let renewalLine = store.snapshot.subscriptionSettingsRenewalLine {
+                    Text(renewalLine)
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.codexMuted)
+                } else if store.snapshot.subscriptionSettingsExpiryLine == nil {
+                    Text("订阅与账单请在 ChatGPT 官网管理")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.codexMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            ChatGPTBillingCompactLink(
+                title: "官方 Billing",
+                fontSize: 11,
+                waveFillsAvailableWidth: false
+            ) {
+                openURL(ChatGPTWebLinks.billingPage)
+            }
+        }
     }
 
     private var header: some View {
@@ -295,8 +346,7 @@ struct SettingsView: View {
             SettingsMenuPicker(
                 selection: $settings.theme,
                 options: AppThemePreference.allCases,
-                title: \.title,
-                symbol: \.symbolName
+                title: \.title
             )
         }
     }
@@ -306,8 +356,7 @@ struct SettingsView: View {
             SettingsMenuPicker(
                 selection: $settings.autoRefreshInterval,
                 options: AutoRefreshInterval.allCases,
-                title: \.title,
-                symbol: { $0 == .off ? "pause.circle" : "clock" }
+                title: \.title
             )
         }
     }
@@ -328,8 +377,7 @@ struct SettingsView: View {
                         SettingsMenuPicker(
                             selection: $settings.petBackgroundColor,
                             options: StatusBarPetBackgroundColor.allCases,
-                            title: \.title,
-                            symbol: \.symbolName
+                            title: \.title
                         )
                     }
                 }
@@ -478,35 +526,62 @@ struct SettingsView: View {
     }
 
     private var petPicker: some View {
-        Menu {
-            let builtIns = settings.availablePets.filter { $0.source == .codexBuiltIn }
-            let custom = settings.availablePets.filter { $0.source == .custom }
+        let builtIns = settings.availablePets.filter { $0.source == .codexBuiltIn }
+        let custom = settings.availablePets.filter { $0.source == .custom }
 
-            if !builtIns.isEmpty {
-                Section("Codex 内置") {
-                    ForEach(builtIns) { pet in
-                        petPickerButton(pet)
-                    }
-                }
-            }
-            if !custom.isEmpty {
-                Section("自定义") {
-                    ForEach(custom) { pet in
-                        petPickerButton(pet)
-                    }
-                }
-            }
+        return Button {
+            showsPetPicker.toggle()
         } label: {
-            HStack(spacing: 6) {
-                Text("选择")
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
-            }
-            .font(.system(size: 12, weight: .medium))
+            SettingsMenuTriggerLabel(title: "选择", fontSize: 12)
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .buttonStyle(CodexPressableStyle(cornerRadius: 7))
+        .popover(isPresented: $showsPetPicker, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 6) {
+                if !builtIns.isEmpty {
+                    SettingsPopoverSection(title: "Codex 内置") {
+                        ForEach(builtIns) { pet in
+                            petPopoverRow(pet)
+                        }
+                    }
+                }
+                if !custom.isEmpty {
+                    SettingsPopoverSection(title: "自定义") {
+                        ForEach(custom) { pet in
+                            petPopoverRow(pet)
+                        }
+                    }
+                }
+            }
+            .padding(8)
+            .frame(minWidth: 180)
+        }
         .fixedSize()
+    }
+
+    private func petPopoverRow(_ pet: CodexPet) -> some View {
+        Button {
+            guard settings.selectedPetID != pet.id else {
+                showsPetPicker = false
+                return
+            }
+            settings.selectedPetID = pet.id
+            showsPetPicker = false
+            showToast("当前 Pet：\(pet.displayName)", systemImage: "pawprint.fill")
+        } label: {
+            HStack(spacing: 8) {
+                Text(pet.displayName)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if settings.selectedPetID == pet.id {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+            }
+            .font(.system(size: 13))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder
@@ -520,20 +595,6 @@ struct SettingsView: View {
             }
         } else {
             SettingsColorDot(color: Color(nsColor: settings.petBackgroundColor.nsColor))
-        }
-    }
-
-    private func petPickerButton(_ pet: CodexPet) -> some View {
-        Button {
-            guard settings.selectedPetID != pet.id else { return }
-            settings.selectedPetID = pet.id
-            showToast("当前 Pet：\(pet.displayName)", systemImage: "pawprint.fill")
-        } label: {
-            if settings.selectedPetID == pet.id {
-                Label(pet.displayName, systemImage: "checkmark")
-            } else {
-                Text(pet.displayName)
-            }
         }
     }
 
@@ -746,39 +807,80 @@ private struct SettingsInlineRow<Content: View>: View {
     }
 }
 
+private struct SettingsMenuTriggerLabel: View {
+    let title: String
+    var fontSize: CGFloat = 13
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(title)
+                .lineLimit(1)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 7, weight: .semibold))
+                .foregroundStyle(Color.codexMuted.opacity(0.9))
+                .imageScale(.small)
+        }
+        .font(.system(size: fontSize, weight: .medium))
+        .padding(.horizontal, 4)
+        .padding(.vertical, 3)
+    }
+}
+
+private struct SettingsPopoverSection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.codexMuted)
+                .padding(.horizontal, 8)
+                .padding(.top, 2)
+            content
+        }
+    }
+}
+
 private struct SettingsMenuPicker<Option: Hashable & Identifiable>: View {
     @Binding var selection: Option
     let options: [Option]
     let title: (Option) -> String
-    let symbol: (Option) -> String
+    @State private var isPresented = false
 
     var body: some View {
-        Menu {
-            ForEach(options) { option in
-                Button {
-                    selection = option
-                } label: {
-                    Label {
-                        Text(title(option))
-                    } icon: {
-                        if selection == option {
-                            Image(systemName: "checkmark")
+        Button {
+            isPresented.toggle()
+        } label: {
+            SettingsMenuTriggerLabel(title: title(selection))
+        }
+        .buttonStyle(CodexPressableStyle(cornerRadius: 7))
+        .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(options) { option in
+                    Button {
+                        selection = option
+                        isPresented = false
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text(title(option))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            if selection == option {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
                         }
+                        .font(.system(size: 13))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                 }
             }
-        } label: {
-            HStack(spacing: 6) {
-                Label(title(selection), systemImage: symbol(selection))
-                    .labelStyle(.titleOnly)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(Color.codexMuted)
-            }
-            .font(.system(size: 13, weight: .medium))
+            .padding(8)
+            .frame(minWidth: 140)
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
         .fixedSize(horizontal: true, vertical: false)
     }
 }

@@ -5,6 +5,7 @@ macOS status bar app concept for viewing Codex usage limits through the official
 ## Documents
 
 - [方案文档](docs/codexling方案.md)
+- [ChatGPT Plus/Pro 会员到期调研](docs/chatgpt-plus-pro-membership-expiry.md)
 - [最新 UI 全量升级实施方案](docs/ui-refresh-implementation-plan.md)
 - [实现待办](PROJECT.md)
 

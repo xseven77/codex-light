@@ -707,6 +707,50 @@ struct IconButton: View {
     }
 }
 
+struct ChatGPTBillingCompactLink: View {
+    let title: String
+    var helpTitle: String = "官方 Billing"
+    var fontSize: CGFloat = 10
+    var emphasizesExpiry: Bool = false
+    /// 为 true 时 wave 区域横向铺满；侧栏等场景建议 false，避免右侧大块空白。
+    var waveFillsAvailableWidth: Bool = false
+    let action: () -> Void
+
+    private static let waveLeading: CGFloat = 6
+    private static let waveTrailing: CGFloat = 4
+    private static let waveVertical: CGFloat = 6
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Text(title)
+                    .font(.system(size: fontSize, weight: .medium))
+                    .foregroundStyle(emphasizesExpiry ? Color.codexAmber : Color.codexMuted)
+                    .lineLimit(1)
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: max(8, fontSize - 1), weight: .semibold))
+                    .foregroundStyle(Color.codexMuted)
+                if waveFillsAvailableWidth {
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(.vertical, Self.waveVertical)
+            .padding(.leading, Self.waveLeading)
+            .padding(.trailing, Self.waveTrailing)
+            .frame(maxWidth: waveFillsAvailableWidth ? .infinity : nil, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        // 抵消 leading 内边距，使文字与上方账号信息左缘对齐；wave 仍向左侧多出一块点击区。
+        .padding(.leading, -Self.waveLeading)
+        .padding(.trailing, waveFillsAvailableWidth ? 0 : -Self.waveTrailing)
+        .buttonStyle(CodexPressableStyle(cornerRadius: 8))
+        .help(helpTitle)
+        .accessibilityLabel(helpTitle)
+        .accessibilityHint("在浏览器中打开")
+        .accessibilityValue(title)
+    }
+}
+
 enum CodexMaterialWaveInk: Equatable {
     case adaptiveMint
     case softLight

@@ -48,6 +48,9 @@ struct CodexUsageSnapshot: Codable, Equatable, Sendable {
     var fetchedAt: Date
     var refreshState: String
     var sourceURL: String
+    /// RFC3339 from `GET /backend-api/subscriptions` → `active_until`.
+    var subscriptionActiveUntilISO: String?
+    var subscriptionWillRenew: Bool?
 }
 
 extension CodexUsageSnapshot {
@@ -76,6 +79,77 @@ extension CodexUsageSnapshot {
             return shortWindow
         }
         return nil
+    }
+
+    var subscriptionExpiryDate: Date? {
+        guard let subscriptionActiveUntilISO else { return nil }
+        return UsageDateFormat.parseISO8601(subscriptionActiveUntilISO)
+    }
+
+    /// 距到期日的整天数；已过期为负数。
+    var subscriptionDaysRemaining: Int? {
+        guard let expiry = subscriptionExpiryDate else { return nil }
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: Date())
+        let end = calendar.startOfDay(for: expiry)
+        return calendar.dateComponents([.day], from: start, to: end).day
+    }
+
+    var showsSubscriptionExpiryReminder: Bool {
+        guard let days = subscriptionDaysRemaining else { return false }
+        return days <= 7
+    }
+
+    var subscriptionSettingsExpiryLine: String? {
+        guard let expiry = subscriptionExpiryDate else { return nil }
+        let when = UsageDateFormat.syncTime(expiry)
+        if subscriptionWillRenew == false {
+            return "会员到期：\(when)"
+        }
+        return "当前周期至 \(when)"
+    }
+
+    var subscriptionSettingsRenewalLine: String? {
+        guard subscriptionExpiryDate != nil else { return nil }
+        if subscriptionWillRenew == true { return "自动续费" }
+        if subscriptionWillRenew == false { return "不自动续费" }
+        return nil
+    }
+
+    /// 侧栏 / 紧凑场景：日期与续费状态合并为一行。
+    var subscriptionCompactSummaryLine: String? {
+        guard let expiry = subscriptionExpiryDate else { return nil }
+        let when = UsageDateFormat.syncTime(expiry)
+        if subscriptionWillRenew == true { return "\(when) · 自动续费" }
+        if subscriptionWillRenew == false { return "\(when) · 不自动续费" }
+        return when
+    }
+
+    var subscriptionSettingsSubtitle: String? {
+        guard let expiryLine = subscriptionSettingsExpiryLine else { return nil }
+        if let renewalLine = subscriptionSettingsRenewalLine {
+            return "\(expiryLine) · \(renewalLine)"
+        }
+        return expiryLine
+    }
+
+    var subscriptionExpiryReminderMessage: String? {
+        guard showsSubscriptionExpiryReminder, let expiry = subscriptionExpiryDate else { return nil }
+        let when = UsageDateFormat.syncTime(expiry)
+        let plan = planName.isEmpty ? "订阅" : planName.capitalized
+        if let days = subscriptionDaysRemaining, days < 0 {
+            return "\(plan) 已于 \(when) 到期"
+        }
+        if let days = subscriptionDaysRemaining, days == 0 {
+            return "\(plan) 将于今天（\(when)）到期"
+        }
+        if let days = subscriptionDaysRemaining {
+            if subscriptionWillRenew == true {
+                return "\(plan) 当前周期还有 \(days) 天结束（\(when)，将自动续费）"
+            }
+            return "\(plan) 还有 \(days) 天到期（\(when)）"
+        }
+        return "\(plan) 将于 \(when) 到期"
     }
 }
 
@@ -115,6 +189,8 @@ final class UsageSnapshotStore {
         tokenStore.clear()
         snapshot.fetchedAt = Date()
         snapshot.refreshState = "已退出登录"
+        snapshot.subscriptionActiveUntilISO = nil
+        snapshot.subscriptionWillRenew = nil
     }
 
     func markAuthenticationExpired() {
@@ -191,6 +267,10 @@ struct UsageActions {
     var quit: () -> Void
 }
 
+enum ChatGPTWebLinks {
+    static let billingPage = URL(string: "https://chatgpt.com/#settings/Billing")!
+}
+
 enum UsageDateFormat {
     static func display(_ date: Date) -> String {
         let formatter = DateFormatter()
@@ -227,6 +307,36 @@ enum UsageDateFormat {
             formatter.dateFormat = "yyyy年M月d日 HH:mm"
         }
         return formatter.string(from: date)
+    }
+
+    static func parseISO8601(_ value: String) -> Date? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = iso.date(from: trimmed) {
+            return date
+        }
+        iso.formatOptions = [.withInternetDateTime]
+        if let date = iso.date(from: trimmed) {
+            return date
+        }
+
+        let formats = [
+            "yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ",
+            "yyyy-MM-dd'T'HH:mm:ssZ",
+            "yyyy-MM-dd HH:mm:ss",
+        ]
+        for format in formats {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = format
+            if let date = formatter.date(from: trimmed) {
+                return date
+            }
+        }
+        return nil
     }
 }
 

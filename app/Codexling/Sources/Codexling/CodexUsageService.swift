@@ -38,6 +38,7 @@ actor CodexUsageService {
     private let tokenURL = URL(string: "https://auth.openai.com/oauth/token")!
     private let usageURL = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
     private let resetCreditsURL = URL(string: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits")!
+    private let subscriptionsURL = URL(string: "https://chatgpt.com/backend-api/subscriptions")!
     private let clientID = "app_EMoamEEZ73f0CkXaXp7hrann"
     private let redirectURI = "http://localhost:1455/auth/callback"
     private let scopes = ["openid", "email", "profile", "offline_access"]
@@ -201,6 +202,14 @@ actor CodexUsageService {
         let accountID = readJWTClaim(token.accessToken, namespace: "https://api.openai.com/auth", claim: "chatgpt_account_id")
         let usagePayload = try await fetchJSON(url: usageURL, token: token.accessToken, accountID: accountID)
         let resetPayload = try? await fetchJSON(url: resetCreditsURL, token: token.accessToken, accountID: accountID)
+        if CodexAPIProbe.isEnabled {
+            _ = try? await recordAPIProbeSession(
+                token: token,
+                accountID: accountID,
+                usagePayload: usagePayload,
+                resetCreditsPayload: resetPayload
+            )
+        }
         let quota = CodexlingParser().parse(
             usagePayload: usagePayload,
             resetCreditsPayload: resetPayload,
@@ -212,18 +221,47 @@ actor CodexUsageService {
             throw CodexUsageError.quotaUnavailable
         }
 
-        return quota
+        var snapshot = quota
+        if let accountID, !accountID.isEmpty,
+           let subscriptionPayload = try? await fetchSubscriptionsPayload(
+               token: token.accessToken,
+               accountID: accountID
+           ) {
+            let subscription = CodexlingParser().parseSubscription(subscriptionPayload)
+            snapshot.subscriptionActiveUntilISO = subscription.activeUntilISO
+            snapshot.subscriptionWillRenew = subscription.willRenew
+        }
+
+        return snapshot
     }
 
-    private func fetchJSON(url: URL, token: String, accountID: String?) async throws -> Any {
+    private func fetchSubscriptionsPayload(token: String, accountID: String) async throws -> Any {
+        var components = URLComponents(url: subscriptionsURL, resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "account_id", value: accountID)]
+        guard let url = components.url else {
+            throw CodexUsageError.quotaUnavailable
+        }
+        return try await fetchChatGPTBackendJSON(url: url, token: token, accountID: accountID, wham: false)
+    }
+
+    private func fetchChatGPTBackendJSON(
+        url: URL,
+        token: String,
+        accountID: String?,
+        wham: Bool
+    ) async throws -> Any {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = 20
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("Codexling/0.1", forHTTPHeaderField: "User-Agent")
-        request.setValue("codex-1", forHTTPHeaderField: "OpenAI-Beta")
-        request.setValue("Codex Desktop", forHTTPHeaderField: "originator")
+        request.setValue("https://chatgpt.com/", forHTTPHeaderField: "Origin")
+        request.setValue("https://chatgpt.com/", forHTTPHeaderField: "Referer")
+        if wham {
+            request.setValue("codex-1", forHTTPHeaderField: "OpenAI-Beta")
+            request.setValue("Codex Desktop", forHTTPHeaderField: "originator")
+        }
         if let accountID {
             request.setValue(accountID, forHTTPHeaderField: "ChatGPT-Account-Id")
         }
@@ -234,6 +272,98 @@ actor CodexUsageService {
         }
 
         return try JSONSerialization.jsonObject(with: data)
+    }
+
+    /// 使用 Keychain 中已有 OAuth token 抓取 wham + 订阅相关端点并落盘（不写入 token）。
+    func runChatGPTAPIProbe() async throws -> URL {
+        let token = try await tokenForProbe()
+        let accountID = readJWTClaim(token.accessToken, namespace: "https://api.openai.com/auth", claim: "chatgpt_account_id")
+        let usagePayload = try await fetchJSON(url: usageURL, token: token.accessToken, accountID: accountID)
+        let resetPayload = try? await fetchJSON(url: resetCreditsURL, token: token.accessToken, accountID: accountID)
+        return try await recordAPIProbeSession(
+            token: token,
+            accountID: accountID,
+            usagePayload: usagePayload,
+            resetCreditsPayload: resetPayload
+        )
+    }
+
+    private func tokenForProbe() async throws -> CodexOAuthToken {
+        guard var token = tokenStore.load() else {
+            throw CodexUsageError.noStoredToken
+        }
+        if token.expiresAt.timeIntervalSinceNow <= 60 {
+            token = try await refreshToken(token)
+            tokenStore.save(token)
+        }
+        return token
+    }
+
+    private func recordAPIProbeSession(
+        token: CodexOAuthToken,
+        accountID: String?,
+        usagePayload: Any,
+        resetCreditsPayload: Any?
+    ) async throws -> URL {
+        let usageData = try JSONSerialization.data(withJSONObject: usagePayload, options: [.sortedKeys])
+        let resetData: Data?
+        if let resetCreditsPayload {
+            resetData = try JSONSerialization.data(withJSONObject: resetCreditsPayload, options: [.sortedKeys])
+        } else {
+            resetData = nil
+        }
+        let accessToken = token.accessToken
+        return try await CodexAPIProbe.recordSession(
+            accountID: accountID,
+            usagePayloadJSON: usageData,
+            resetCreditsPayloadJSON: resetData
+        ) { url, accountID in
+            await self.fetchProbeJSON(url: url, token: accessToken, accountID: accountID)
+        }
+    }
+
+    private func fetchProbeJSON(
+        url: URL,
+        token: String,
+        accountID: String?
+    ) async -> CodexAPIProbe.ProbeHTTPResult {
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 20
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Codexling/0.1", forHTTPHeaderField: "User-Agent")
+        request.setValue("https://chatgpt.com/", forHTTPHeaderField: "Origin")
+        request.setValue("https://chatgpt.com/", forHTTPHeaderField: "Referer")
+        if url.path.contains("/wham/") {
+            request.setValue("codex-1", forHTTPHeaderField: "OpenAI-Beta")
+            request.setValue("Codex Desktop", forHTTPHeaderField: "originator")
+        }
+        if let accountID {
+            request.setValue(accountID, forHTTPHeaderField: "ChatGPT-Account-Id")
+        }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                return CodexAPIProbe.ProbeHTTPResult(statusCode: 0, bodyJSON: nil, error: "无 HTTP 响应")
+            }
+            if httpResponse.statusCode != 200 {
+                let snippet = String(data: data.prefix(240), encoding: .utf8) ?? ""
+                return CodexAPIProbe.ProbeHTTPResult(
+                    statusCode: httpResponse.statusCode,
+                    bodyJSON: data.isEmpty ? nil : data,
+                    error: "HTTP \(httpResponse.statusCode) \(snippet)"
+                )
+            }
+            return CodexAPIProbe.ProbeHTTPResult(statusCode: httpResponse.statusCode, bodyJSON: data, error: nil)
+        } catch {
+            return CodexAPIProbe.ProbeHTTPResult(statusCode: 0, bodyJSON: nil, error: error.localizedDescription)
+        }
+    }
+
+    private func fetchJSON(url: URL, token: String, accountID: String?) async throws -> Any {
+        try await fetchChatGPTBackendJSON(url: url, token: token, accountID: accountID, wham: true)
     }
 }
 
@@ -271,6 +401,36 @@ struct CodexlingParser {
             refreshState: "成功",
             sourceURL: "https://chatgpt.com/backend-api/wham/usage"
         )
+    }
+
+    func parseSubscription(_ payload: Any) -> (activeUntilISO: String?, willRenew: Bool?) {
+        guard let root = payload as? [String: Any] else {
+            return (nil, nil)
+        }
+        let activeUntil = (root["active_until"] as? String) ?? (root["activeUntil"] as? String)
+        let trimmed = activeUntil?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let activeUntilISO = (trimmed?.isEmpty == false) ? trimmed : nil
+        return (activeUntilISO, parseWillRenew(root["will_renew"] ?? root["willRenew"]))
+    }
+
+    private func parseWillRenew(_ value: Any?) -> Bool? {
+        switch value {
+        case let flag as Bool:
+            return flag
+        case let number as NSNumber:
+            return number.boolValue
+        case let string as String:
+            switch string.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "1", "true", "yes":
+                return true
+            case "0", "false", "no":
+                return false
+            default:
+                return nil
+            }
+        default:
+            return nil
+        }
     }
 
     private func readQuotaWindow(_ input: Any) -> ParsedQuotaWindow? {

@@ -48,6 +48,12 @@ struct CompanionDashboardView: View {
                         isLoggedIn: store.isLoggedIn
                     )
 
+                    if store.snapshot.showsSubscriptionExpiryReminder,
+                       let message = store.snapshot.subscriptionExpiryReminderMessage {
+                        SubscriptionExpiryReminderBanner(message: message)
+                            .padding(.top, 12)
+                    }
+
                     TaskStackView(
                         snapshot: activityStore.snapshot,
                         selectedTaskID: $selectedTaskID
@@ -104,6 +110,31 @@ struct CompanionDashboardView: View {
                 .padding(.top, 4)
         }
         .padding(.top, 18)
+    }
+}
+
+private struct SubscriptionExpiryReminderBanner: View {
+    let message: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "calendar.badge.exclamationmark")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.codexAmber)
+            Text(message)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color.codexInk)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.codexAmber.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.codexAmber.opacity(0.28), lineWidth: 0.8)
+        )
+        .accessibilityLabel(message)
     }
 }
 
@@ -864,6 +895,7 @@ private struct ResetCouponTicketCard: View {
 
 private struct CompanionSidebar: View {
     private static let sidebarSpace = "companionSidebar"
+    private static let accountTopPadding: CGFloat = 45
 
     let snapshot: CodexUsageSnapshot
     let activity: CodexActivitySnapshot
@@ -871,6 +903,7 @@ private struct CompanionSidebar: View {
     @Bindable var frameStore: PetFrameStore
     let todayMinutes: Int
     @State private var ripples: [CodexMaterialWaveToken] = []
+    @Environment(\.openURL) private var openURL
 
     private var accountName: String {
         if let name = snapshot.accountName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
@@ -917,42 +950,21 @@ private struct CompanionSidebar: View {
             }
             .allowsHitTesting(false)
 
-            VStack(spacing: 0) {
-                accountSummary
-                    .padding(.top, 45)
-                    .padding(.horizontal, 16)
-
-                Spacer(minLength: 8)
-
-                petView
-                    .frame(width: 145, height: 218)
-                    .zIndex(1)
-                    .allowsHitTesting(false)
-
-                Spacer(minLength: 4)
-
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(activity.state.statusColor)
-                        .frame(width: 8, height: 8)
-                    Text("\(settings.selectedPet?.displayName ?? "Pet") · \(activity.state.companionText)")
-                        .lineLimit(1)
-                }
-                .font(.system(size: 11, weight: .semibold))
-                .padding(.horizontal, 10)
-                .frame(height: 30)
-                .background(Color.codexCard.opacity(0.92), in: Capsule())
-                .overlay(Capsule().stroke(Color.white.opacity(0.72), lineWidth: 0.7))
+            petView
+                .frame(width: 145, height: 218)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .zIndex(1)
                 .allowsHitTesting(false)
-
-                Text("今天一起工作 \(todayDurationText)")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.codexMuted)
-                    .padding(.top, 9)
-                    .padding(.bottom, 19)
-                    .allowsHitTesting(false)
-            }
-            .allowsHitTesting(false)
+        }
+        .overlay(alignment: .bottom) {
+            sidebarFooter
+                .allowsHitTesting(false)
+        }
+        .overlay(alignment: .topLeading) {
+            accountSummary
+                .padding(.top, Self.accountTopPadding)
+                .padding(.horizontal, 16)
+                .frame(width: DetachedWindowMetrics.sidebarWidth, alignment: .leading)
         }
         .contentShape(Rectangle())
         .coordinateSpace(name: Self.sidebarSpace)
@@ -980,30 +992,77 @@ private struct CompanionSidebar: View {
         }
     }
 
-    private var accountSummary: some View {
-        VStack(alignment: .leading, spacing: 2) {
+    private var sidebarFooter: some View {
+        VStack(spacing: 0) {
             HStack(spacing: 5) {
-                Text(accountName)
-                        .font(.system(size: 14, weight: .semibold))
+                Circle()
+                    .fill(activity.state.statusColor)
+                    .frame(width: 8, height: 8)
+                Text("\(settings.selectedPet?.displayName ?? "Pet") · \(activity.state.companionText)")
                     .lineLimit(1)
-                if !planBadgeText.isEmpty {
-                    Text(planBadgeText)
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(Color.codexGreen)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 2)
-                        .background(Color.codexGreen.opacity(0.10), in: RoundedRectangle(cornerRadius: 4))
-                }
             }
-            Text(snapshot.accountEmail)
-                .lineLimit(1)
-            Text(snapshot.workspaceName)
-                .lineLimit(1)
+            .font(.system(size: 11, weight: .semibold))
+            .padding(.horizontal, 10)
+            .frame(height: 30)
+            .background(Color.codexCard.opacity(0.92), in: Capsule())
+            .overlay(Capsule().stroke(Color.white.opacity(0.72), lineWidth: 0.7))
+
+            Text("今天一起工作 \(todayDurationText)")
+                .font(.system(size: 11))
+                .foregroundStyle(Color.codexMuted)
+                .padding(.top, 9)
+                .padding(.bottom, 19)
         }
+    }
+
+    private var accountSummary: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    Text(accountName)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.codexInk)
+                        .lineLimit(1)
+                    if !planBadgeText.isEmpty {
+                        Text(planBadgeText)
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(Color.codexGreen)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .background(Color.codexGreen.opacity(0.10), in: RoundedRectangle(cornerRadius: 4))
+                    }
+                }
+                Text(snapshot.accountEmail)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
             .font(.system(size: 10))
             .foregroundStyle(Color.codexMuted)
             .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
+            .padding(.bottom, 8)
+
+            Rectangle()
+                .fill(Color.codexLine.opacity(0.72))
+                .frame(height: 0.7)
+
+            Group {
+                if let summaryLine = snapshot.subscriptionCompactSummaryLine {
+                    ChatGPTBillingCompactLink(
+                        title: summaryLine,
+                        emphasizesExpiry: snapshot.showsSubscriptionExpiryReminder
+                    ) {
+                        openURL(ChatGPTWebLinks.billingPage)
+                    }
+                } else {
+                    ChatGPTBillingCompactLink(title: "订阅与账单") {
+                        openURL(ChatGPTWebLinks.billingPage)
+                    }
+                }
+            }
+            .padding(.top, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("当前账号 \(accountName)")
     }
 

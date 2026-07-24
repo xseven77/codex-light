@@ -80,8 +80,8 @@ enum AutoRefreshInterval: Int, CaseIterable, Identifiable {
 }
 
 enum StatusBarPetBackgroundColor: String, CaseIterable, Identifiable {
-    case automatic
     case neutral
+    case automatic
     case green
     case yellow
     case red
@@ -261,7 +261,7 @@ final class AppSettingsStore {
         petsEnabled = defaults.object(forKey: Keys.petsEnabled) as? Bool ?? true
         selectedPetID = defaults.string(forKey: Keys.selectedPetID) ?? "builtin:codex"
         let backgroundRaw = defaults.string(forKey: Keys.petBackgroundColor)
-        petBackgroundColor = backgroundRaw.flatMap(StatusBarPetBackgroundColor.init(rawValue:)) ?? .automatic
+        petBackgroundColor = backgroundRaw.flatMap(StatusBarPetBackgroundColor.init(rawValue:)) ?? .neutral
         statusBarWaveEnabled = defaults.object(forKey: Keys.statusBarWaveEnabled) as? Bool ?? true
         let savedCornerPercent = defaults.object(forKey: Keys.statusBarCornerPercent) as? Double ?? 50
         statusBarCornerPercent = min(max(savedCornerPercent, 20), 50)

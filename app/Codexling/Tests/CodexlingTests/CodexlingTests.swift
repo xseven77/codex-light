@@ -62,14 +62,14 @@ final class CodexlingTests: XCTestCase {
     }
 
     @MainActor
-    func testPetBackgroundDefaultsToFollowQuotaAndListsItFirst() throws {
+    func testPetBackgroundDefaultsToNeutralAndListsItFirst() throws {
         let suiteName = "CodexlingTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let settings = AppSettingsStore(defaults: defaults)
-        XCTAssertEqual(settings.petBackgroundColor, .automatic)
-        XCTAssertEqual(StatusBarPetBackgroundColor.allCases.first, .automatic)
+        XCTAssertEqual(settings.petBackgroundColor, .neutral)
+        XCTAssertEqual(StatusBarPetBackgroundColor.allCases.first, .neutral)
     }
 
     func testStatusPetBadgeKeepsPetVisibleOnWhiteBackdrop() {
@@ -309,6 +309,27 @@ final class CodexlingTests: XCTestCase {
         XCTAssertEqual(primary.remaining, 74)
         XCTAssertEqual(primary.total, 100)
         XCTAssertFalse(snapshot.hasWeeklyWindow)
+    }
+
+    func testSubscriptionParserReadsActiveUntilAndWillRenew() {
+        let payload: [String: Any] = [
+            "plan_type": "plus",
+            "active_until": "2026-08-21T06:22:29Z",
+            "will_renew": 1,
+        ]
+        let parsed = CodexlingParser().parseSubscription(payload)
+        XCTAssertEqual(parsed.activeUntilISO, "2026-08-21T06:22:29Z")
+        XCTAssertEqual(parsed.willRenew, true)
+    }
+
+    func testSubscriptionExpiryReminderWithinSevenDays() {
+        let expiry = Calendar.current.date(byAdding: .day, value: 3, to: Date())!
+        let iso = ISO8601DateFormatter().string(from: expiry)
+        var snapshot = CodexUsageSnapshot.preview
+        snapshot.subscriptionActiveUntilISO = iso
+        snapshot.subscriptionWillRenew = false
+        XCTAssertTrue(snapshot.showsSubscriptionExpiryReminder)
+        XCTAssertNotNil(snapshot.subscriptionExpiryReminderMessage)
     }
 
     func testUsageParserKeepsAvailableResetCouponsSortedByExpiration() {
@@ -692,7 +713,7 @@ final class CodexlingTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         defaults.set("cyan", forKey: "codexling.petBackgroundColor")
 
-        XCTAssertEqual(AppSettingsStore(defaults: defaults).petBackgroundColor, .automatic)
+        XCTAssertEqual(AppSettingsStore(defaults: defaults).petBackgroundColor, .neutral)
     }
 
     private func littleEndian(_ value: UInt32) -> Data {
